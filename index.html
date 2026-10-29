@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Любимой маме от сынули 💗</title>
+<style>
+body {
+  margin: 0; padding: 20px;
+  font-family: Arial, sans-serif;
+  text-align: center; color: #702342;
+  background: linear-gradient(#fff0f5, #fffaf0);
+}
+h1 { color: #b52f61; }
+.card {
+  max-width: 420px; margin: 18px auto; padding: 18px;
+  background: white; border-radius: 22px;
+  box-shadow: 0 5px 20px #8e24451c;
+}
+button, input {
+  padding: 12px; margin: 5px;
+  border-radius: 12px; border: 1px solid #e6b9c9;
+  font-size: 16px;
+}
+button { background: #b52f61; color: white; cursor: pointer; }
+input { width: 75%; }
+#board {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 7px; max-width: 300px; margin: 18px auto;
+}
+.tile {
+  aspect-ratio: 1; font-size: 30px; font-weight: bold;
+  border: 0; border-radius: 12px;
+  background: #b52f61; color: white;
+}
+.empty { background: #fff0f5; color: #fff0f5; }
+#status { overflow-wrap: anywhere; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Любимой маме от сынули 💗</h1>
+<p>🌹 Вместе мы справимся! 🌹</p>
+
+<div class="card">
+  <h2>💌 Комната для двоих</h2>
+  <button id="create">Создать комнату</button>
+  <br>
+  <input id="code" placeholder="Код комнаты" maxlength="8">
+  <button id="join">Войти</button>
+  <p id="room"></p>
+  <p id="status">Подключение...</p>
+</div>
+
+<div class="card">
+  <h2>🧩 Головоломка</h2>
+  <p>Передвигайте плитки вместе, чтобы собрать числа по порядку.</p>
+  <div id="board"></div>
+  <button id="shuffle">Перемешать</button>
+  <p id="moves">Ходов: 0</p>
+</div>
+
+<script type="module">
+import { initializeApp } from
+  "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, signInAnonymously } from
+  "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  getDatabase, ref, get, set, update, onValue
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDPu339DZm0yP27PEsV1qnvi16-x1m3Jm0",
+  authDomain: "mama-puzle.firebaseapp.com",
+  databaseURL: "https://mama-puzle-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "mama-puzle",
+  storageBucket: "mama-puzle.firebasestorage.app",
+  messagingSenderId: "666117076026",
+  appId: "1:666117076026:web:15de7a69e0d4f33a6ff103"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+let uid = null, roomCode = null, board = [1,2,3,4,5,6,7,8,0];
+let moves = 0, changing = false, unsubscribe = null;
+
+const status = document.getElementById("status");
+const roomText = document.getElementById("room");
+const boardEl = document.getElementById("board");
+
+function say(message) { status.textContent = message; }
+
+try {
+  const credential = await signInAnonymously(auth);
+  uid = credential.user.uid;
+  say("Подключено к Firebase. Создай комнату или введи код.");
+} catch (e) {
+  say("Ошибка входа: " + e.message +
+      ". Проверь, включён ли Anonymous в Firebase Authentication.");
+}
+
+function draw() {
+  boardEl.innerHTML = "";
+  board.forEach((n, i) => {
+    const b = document.createElement("button");
+    b.className = "tile" + (n === 0 ? " empty" : "");
+    b.textContent = n || "·";
+    b.onclick = () => move(i);
+    boardEl.appendChild(b);
+  });
+  document.getElementById("moves").textContent = "Ходов: " + moves;
+}
+
+function solved() {
+  return board.every((n, i) => n === (i + 1) % 9);
+}
+
+function move(i) {
+  if (!roomCode || changing) return;
+  const z = board.indexOf(0);
+  if (!(Math.abs(i-z) === 3 ||
+      (Math.abs(i-z) === 1 && Math.floor(i/3) === Math.floor(z/3)))) return;
+
+  const next = [...board];
+  [next[i], next[z]] = [next[z], next[i]];
+  changing = true;
+
+  update(ref(db, "rooms/" + roomCode + "/state"), {
+    board: next,
+    moves: moves + 1,
+    updatedBy: uid
+  }).catch(e => say("Не удалось сохранить ход: " + e.message))
+    .finally(() => changing = false);
+}
+
+function randomBoard() {
+  let a = [1,2,3,4,5,6,7,8,0];
+  for (let k = 0; k < 100; k++) {
+    const z = a.indexOf(0);
+    const options = [z-3,z+3,
+      ...(z%3 ? [z-1] : []),
+      ...(z%3 < 2 ? [z+1] : [])
+    ].filter(i => i >= 0 && i < 9);
+    const i = options[Math.floor(Math.random()*options.length)];
+    [a[z], a[i]] = [a[i], a[z]];
+  }
+  return a;
+}
+
+async function enterRoom(code, create) {
+  if (!uid) { say("Подожди: подключаем вход..."); return; }
+  code = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!/^[A-Z0-9]{6,8}$/.test(code)) {
+    say("Код должен содержать 6–8 английских букв или цифр.");
+    return;
+  }
+
+  try {
+    const roomRef = ref(db, "rooms/" + code);
+    if (create) {
+      const existing = await get(ref(db, "rooms/" + code + "/state"));
+      if (existing.exists()) {
+        say("Такая комната уже есть. Создай новую.");
+        return;
+      }
+    }
+
+    await set(ref(db, "rooms/" + code + "/members/" + uid), true);
+
+    if (create) {
+      await set(ref(db, "rooms/" + code + "/state"), {
+        board: randomBoard(), moves: 0, updatedBy: uid
+      });
+    } else {
+      const state = await get(ref(db, "rooms/" + code + "/state"));
+      if (!state.exists()) {
+        await set(ref(db, "rooms/" + code + "/members/" + uid), null);
+        say("Комната не найдена. Проверь код.");
+        return;
+      }
+    }
+
+    roomCode = code;
+    roomText.textContent = "Код комнаты: " + code;
+    document.getElementById("code").value = code;
+    if (unsubscribe) unsubscribe();
+
+    unsubscribe = onValue(ref(db, "rooms/" + code + "/state"), snap => {
+      if (!snap.exists()) return;
+      const data = snap.val();
+      board = data.board || board;
+      moves = data.moves || 0;
+      draw();
+      say(solved() ? "Ура! Головоломка собрана! 💗" :
+        "Вы в одной комнате! Ходы синхронизируются.");
+    }, e => say("Ошибка чтения: " + e.message));
+
+  } catch (e) {
+    say("Ошибка: " + e.message +
+      ". Проверь правила Realtime Database.");
+  }
+}
+
+document.getElementById("create").onclick = () => {
+  const code = Math.random().toString(36).slice(2, 10).toUpperCase();
+  enterRoom(code, true);
+};
+document.getElementById("join").onclick = () =>
+  enterRoom(document.getElementById("code").value.trim(), false);
+
+document.getElementById("shuffle").onclick = async () => {
+  if (!roomCode) {
+    say("Сначала создай комнату или войди в неё.");
+    return;
+  }
+  try {
+    await update(ref(db, "rooms/" + roomCode + "/state"), {
+      board: randomBoard(), moves: 0, updatedBy: uid
+    });
+  } catch (e) { say("Не удалось перемешать: " + e.message); }
+};
+
+draw();
+</script>
+</body>
+</html>
